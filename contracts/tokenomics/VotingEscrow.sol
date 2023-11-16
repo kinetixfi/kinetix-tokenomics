@@ -116,7 +116,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     uint8 internal constant _entered = 2;
     uint8 internal _entered_state = 1;
     modifier nonreentrant() {
-        require(_entered_state == _not_entered);
+        require(_entered_state == _not_entered,"reentrant call");
         _entered_state = _entered;
         _;
         _entered_state = _not_entered;
@@ -132,12 +132,12 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     uint8 constant public decimals = 18;
 
     function setTeam(address _team) external {
-        require(msg.sender == team);
+        require(msg.sender == team,"!authorized");
         team = _team;
     }
 
     function setArtProxy(address _proxy) external {
-        require(msg.sender == team);
+        require(msg.sender == team,"!authorized");
         artProxy = _proxy;
     }
 
@@ -222,13 +222,13 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     function approve(address _approved, uint _tokenId) public {
         address owner = idToOwner[_tokenId];
         // Throws if `_tokenId` is not a valid NFT
-        require(owner != address(0));
+        require(owner != address(0),"zero address");
         // Throws if `_approved` is the current owner
-        require(_approved != owner);
+        require(_approved != owner,"approved is owner");
         // Check requirements
         bool senderIsOwner = (idToOwner[_tokenId] == msg.sender);
         bool senderIsApprovedForAll = (ownerToOperators[owner])[msg.sender];
-        require(senderIsOwner || senderIsApprovedForAll);
+        require(senderIsOwner || senderIsApprovedForAll,"approve check fail");
         // Set the approval
         idToApprovals[_tokenId] = _approved;
         emit Approval(owner, _approved, _tokenId);
@@ -242,7 +242,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @param _approved True if the operators is approved, false to revoke approval.
     function setApprovalForAll(address _operator, bool _approved) external {
         // Throws if `_operator` is the `msg.sender`
-        assert(_operator != msg.sender);
+        require(_operator != msg.sender,"operator is sender");
         ownerToOperators[msg.sender][_operator] = _approved;
         emit ApprovalForAll(msg.sender, _operator, _approved);
     }
@@ -252,7 +252,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     ///      Throws if `_owner` is not the current owner.
     function _clearApproval(address _owner, uint _tokenId) internal {
         // Throws if `_owner` is not the current owner
-        assert(idToOwner[_tokenId] == _owner);
+        require(idToOwner[_tokenId] == _owner,"!owner");
         if (idToApprovals[_tokenId] != address(0)) {
             // Reset approvals
             idToApprovals[_tokenId] = address(0);
@@ -289,7 +289,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     ) internal {
         require(attachments[_tokenId] == 0 && !voted[_tokenId], "attached");
         // Check requirements
-        require(_isApprovedOrOwner(_sender, _tokenId));
+        require(_isApprovedOrOwner(_sender, _tokenId),"!approvedOrOwner");
         // Clear approval. Throws if `_from` is not the current owner
         _clearApproval(_from, _tokenId);
         // Remove NFT. Throws if `_tokenId` is not a valid NFT
@@ -428,7 +428,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     ///      Throws if `_tokenId` is owned by someone.
     function _addTokenTo(address _to, uint _tokenId) internal {
         // Throws if `_tokenId` is owned by someone
-        assert(idToOwner[_tokenId] == address(0));
+        require(idToOwner[_tokenId] == address(0),"!zero address");
         // Change the owner
         idToOwner[_tokenId] = _to;
         // Update owner token index tracking
@@ -445,7 +445,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @return A boolean that indicates if the operation was successful.
     function _mint(address _to, uint _tokenId) internal returns (bool) {
         // Throws if `_to` is zero address
-        assert(_to != address(0));
+        require(_to != address(0),"zero address");
         // checkpoint for gov
         _moveTokenDelegates(address(0), delegates(_to), _tokenId);
         // Add NFT. Throws if `_tokenId` is owned by someone
@@ -507,7 +507,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         // checkpoint for gov
         _moveTokenDelegates(delegates(owner), address(0), _tokenId);
         // Remove token
-        _removeTokenFrom(msg.sender, _tokenId);
+        _removeTokenFrom(owner, _tokenId);
         emit Transfer(owner, address(0), _tokenId);
     }
 
@@ -729,7 +729,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
 
         address from = msg.sender;
         if (_value != 0 && deposit_type != DepositType.MERGE_TYPE) {
-            assert(IERC20(token).transferFrom(from, address(this), _value));
+            require(IERC20(token).transferFrom(from, address(this), _value),"transfer failed");
         }
 
         emit Deposit(from, _tokenId, _value, _locked.end, deposit_type, block.timestamp);
@@ -753,7 +753,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     function deposit_for(uint _tokenId, uint _value) external nonreentrant {
         LockedBalance memory _locked = locked[_tokenId];
 
-        require(_value > 0); // dev: need non-zero value
+        require(_value > 0,"zero value"); // dev: need non-zero value
         require(_locked.amount > 0, 'No existing lock found');
         require(_locked.end > block.timestamp, 'Cannot add to expired lock. Withdraw');
         _deposit_for(_tokenId, _value, 0, _locked, DepositType.DEPOSIT_FOR_TYPE);
@@ -766,7 +766,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     function _create_lock(uint _value, uint _lock_duration, address _to) internal returns (uint) {
         uint unlock_time = (block.timestamp + _lock_duration) / WEEK * WEEK; // Locktime is rounded down to weeks
 
-        require(_value > 0); // dev: need non-zero value
+        require(_value > 0,"zero value"); // dev: need non-zero value
         require(unlock_time > block.timestamp, 'Can only lock until time in the future');
         require(unlock_time <= block.timestamp + MAXTIME, 'Voting lock can be 1 year max');
 
@@ -796,11 +796,11 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @notice Deposit `_value` additional tokens for `_tokenId` without modifying the unlock time
     /// @param _value Amount of tokens to deposit and add to the lock
     function increase_amount(uint _tokenId, uint _value) external nonreentrant {
-        assert(_isApprovedOrOwner(msg.sender, _tokenId));
+        require(_isApprovedOrOwner(msg.sender, _tokenId),"!approvedOrOwner");
 
         LockedBalance memory _locked = locked[_tokenId];
 
-        assert(_value > 0); // dev: need non-zero value
+        require(_value > 0,"zero value"); // dev: need non-zero value
         require(_locked.amount > 0, 'No existing lock found');
         require(_locked.end > block.timestamp, 'Cannot add to expired lock. Withdraw');
 
@@ -810,7 +810,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @notice Extend the unlock time for `_tokenId`
     /// @param _lock_duration New number of seconds until tokens unlock
     function increase_unlock_time(uint _tokenId, uint _lock_duration) external nonreentrant {
-        assert(_isApprovedOrOwner(msg.sender, _tokenId));
+        require(_isApprovedOrOwner(msg.sender, _tokenId),"!approvedOrOwner");
 
         LockedBalance memory _locked = locked[_tokenId];
         uint unlock_time = (block.timestamp + _lock_duration) / WEEK * WEEK; // Locktime is rounded down to weeks
@@ -826,7 +826,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @notice Withdraw all tokens for `_tokenId`
     /// @dev Only possible if the lock has expired
     function withdraw(uint _tokenId) external nonreentrant {
-        assert(_isApprovedOrOwner(msg.sender, _tokenId));
+        require(_isApprovedOrOwner(msg.sender, _tokenId),"!approvedOrOwner");
         require(attachments[_tokenId] == 0 && !voted[_tokenId], "attached");
 
         LockedBalance memory _locked = locked[_tokenId];
@@ -842,7 +842,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
         // Both can have >= 0 amount
         _checkpoint(_tokenId, _locked, LockedBalance(0,0));
 
-        assert(IERC20(token).transfer(msg.sender, value));
+        require(IERC20(token).transfer(msg.sender, value),"transfer failed");
 
         // Burn the NFT
         _burn(_tokenId);
@@ -918,7 +918,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     function _balanceOfAtNFT(uint _tokenId, uint _block) internal view returns (uint) {
         // Copying and pasting totalSupply code because Vyper cannot pass by
         // reference yet
-        assert(_block <= block.number);
+        require(_block <= block.number,"wrong block");
 
         // Binary search
         uint _min = 0;
@@ -972,7 +972,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     /// @param _block Block to calculate the total voting power at
     /// @return Total voting power at `_block`
     function totalSupplyAt(uint _block) external view returns (uint) {
-        assert(_block <= block.number);
+        require(_block <= block.number,"wrong block");
         uint _epoch = epoch;
         uint target_epoch = _find_block_epoch(_block, _epoch);
 
@@ -1041,35 +1041,25 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     mapping(uint => bool) public voted;
 
     function setVoter(address _voter) external {
-        require(msg.sender == voter);
+        require(msg.sender == voter,"!voter");
         voter = _voter;
     }
 
     function voting(uint _tokenId) external {
-        require(msg.sender == voter);
+        require(msg.sender == voter,"!voter");
         voted[_tokenId] = true;
     }
 
     function abstain(uint _tokenId) external {
-        require(msg.sender == voter);
+        require(msg.sender == voter,"!voter");
         voted[_tokenId] = false;
-    }
-
-    function attach(uint _tokenId) external {
-        require(msg.sender == voter);
-        attachments[_tokenId] = attachments[_tokenId] + 1;
-    }
-
-    function detach(uint _tokenId) external {
-        require(msg.sender == voter);
-        attachments[_tokenId] = attachments[_tokenId] - 1;
     }
 
     function merge(uint _from, uint _to) external {
         require(attachments[_from] == 0 && !voted[_from], "attached");
-        require(_from != _to);
-        require(_isApprovedOrOwner(msg.sender, _from));
-        require(_isApprovedOrOwner(msg.sender, _to));
+        require(_from != _to,"from is to");
+        require(_isApprovedOrOwner(msg.sender, _from),"!approvedOrOwner");
+        require(_isApprovedOrOwner(msg.sender, _to),"!approvedOrOwner");
 
         LockedBalance memory _locked0 = locked[_from];
         LockedBalance memory _locked1 = locked[_to];
@@ -1205,6 +1195,9 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
                 uint[] storage srcRepNew = checkpoints[srcRep][
                     nextSrcRepNum
                 ].tokenIds;
+                if(checkpoints[srcRep][nextSrcRepNum].timestamp == 0){
+                    checkpoints[srcRep][nextSrcRepNum].timestamp = block.timestamp;
+                }
                 // All the same except _tokenId
                 for (uint i = 0; i < srcRepOld.length; i++) {
                     uint tId = srcRepOld[i];
@@ -1225,6 +1218,9 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
                 uint[] storage dstRepNew = checkpoints[dstRep][
                     nextDstRepNum
                 ].tokenIds;
+                if(checkpoints[dstRep][nextDstRepNum].timestamp == 0){
+                    checkpoints[dstRep][nextDstRepNum].timestamp = block.timestamp;
+                }
                 // All the same plus _tokenId
                 require(
                     dstRepOld.length + 1 <= MAX_DELEGATES,
@@ -1275,6 +1271,9 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
                 uint[] storage srcRepNew = checkpoints[srcRep][
                     nextSrcRepNum
                 ].tokenIds;
+                if(checkpoints[srcRep][nextSrcRepNum].timestamp == 0){
+                    checkpoints[srcRep][nextSrcRepNum].timestamp = block.timestamp;
+                }
                 // All the same except what owner owns
                 for (uint i = 0; i < srcRepOld.length; i++) {
                     uint tId = srcRepOld[i];
@@ -1295,6 +1294,9 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
                 uint[] storage dstRepNew = checkpoints[dstRep][
                     nextDstRepNum
                 ].tokenIds;
+                if(checkpoints[dstRep][nextDstRepNum].timestamp == 0){
+                    checkpoints[dstRep][nextDstRepNum].timestamp = block.timestamp;
+                }
                 uint ownerTokenCount = ownerToNFTokenCount[owner];
                 require(
                     dstRepOld.length + ownerTokenCount <= MAX_DELEGATES,

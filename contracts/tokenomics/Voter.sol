@@ -38,11 +38,14 @@ contract Voter is IVoter {
     mapping(address => bool) public isVoteable;
     mapping(address => bool) public isWhitelisted;
 
-    event VoteablePoolAdded(address creator, address indexed external_bribe, address indexed pool);
+    event VoteablePoolAdded(address indexed creator, address indexed external_bribe, address indexed pool);
     event VoteablePoolRemoved(address indexed pool);
-    event Voted(address indexed voter, uint tokenId, uint256 weight);
-    event Abstained(uint tokenId, uint256 weight);
+    event Voted(address indexed voter, uint indexed tokenId, uint256 weight);
+    event Abstained(uint indexed tokenId, uint256 weight);
     event Whitelisted(address indexed whitelister, address indexed token);
+    event SetGovernor(address indexed governor);
+    event SetEmergencyCouncil(address indexed emergencyCouncil);
+    event Poke(uint indexed tokenId);
 
     constructor(address __ve, address _bribes, address _v2Factory, address _v3Factory) {
         _ve = __ve;
@@ -59,24 +62,20 @@ contract Voter is IVoter {
         _;
     }
 
-    function initialize(address[] memory _tokens) external {
-        for (uint i = 0; i < _tokens.length; i++) {
-            _whitelist(_tokens[i]);
-        }
-    }
-
     function setGovernor(address _governor) public {
-        require(msg.sender == governor);
+        require(msg.sender == governor,"!governor");
         governor = _governor;
+        emit SetGovernor(_governor);
     }
 
     function setEmergencyCouncil(address _council) public {
-        require(msg.sender == emergencyCouncil);
+        require(msg.sender == emergencyCouncil,"!emergencyCouncil");
         emergencyCouncil = _council;
+        emit SetEmergencyCouncil(_council);
     }
 
     function reset(uint _tokenId) external onlyNewEpoch(_tokenId) {
-        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId));
+        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId),"!approvedOrOwner");
         lastVoted[_tokenId] = block.timestamp;
         _reset(_tokenId);
         IVotingEscrow(_ve).abstain(_tokenId);
@@ -94,12 +93,9 @@ contract Voter is IVoter {
             if (_votes != 0) {
                 weights[_pool] -= _votes;
                 votes[_tokenId][_pool] -= _votes;
-                if (_votes > 0) {
-                    IBribe(external_bribes[_pool])._withdraw(uint256(_votes), _tokenId);
-                    _totalWeight += _votes;
-                } else {
-                    _totalWeight -= _votes;
-                }
+                IBribe(external_bribes[_pool])._withdraw(uint256(_votes), _tokenId);
+                _totalWeight += _votes;
+
                 emit Abstained(_tokenId, _votes);
             }
         }
@@ -118,6 +114,7 @@ contract Voter is IVoter {
         }
 
         _vote(_tokenId, _poolVote, _weights);
+        emit Poke(_tokenId);
     }
 
     function _vote(uint _tokenId, address[] memory _poolVote, uint256[] memory _weights) internal {
@@ -137,8 +134,8 @@ contract Voter is IVoter {
 
             if (isVoteable[_pool]) {
                 uint256 _poolWeight = _weights[i] * _weight / _totalVoteWeight;
-                require(votes[_tokenId][_pool] == 0);
-                require(_poolWeight != 0);
+                require(votes[_tokenId][_pool] == 0,"pool already voted");
+                require(_poolWeight != 0,"poolWeight is zero");
 
                 poolVote[_tokenId].push(_pool);
 
@@ -156,19 +153,19 @@ contract Voter is IVoter {
     }
 
     function vote(uint tokenId, address[] calldata _poolVote, uint256[] calldata _weights) external onlyNewEpoch(tokenId) {
-        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, tokenId));
-        require(_poolVote.length == _weights.length);
+        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, tokenId),"!approvedOrOwner");
+        require(_poolVote.length == _weights.length,"array lengths must be equal");
         lastVoted[tokenId] = block.timestamp;
         _vote(tokenId, _poolVote, _weights);
     }
 
     function whitelist(address _token) public {
-        require(msg.sender == governor);
+        require(msg.sender == governor,"!governor");
         _whitelist(_token);
     }
 
     function _whitelist(address _token) internal {
-        require(!isWhitelisted[_token]);
+        require(!isWhitelisted[_token],"already whitelisted");
         isWhitelisted[_token] = true;
         emit Whitelisted(msg.sender, _token);
     }
@@ -222,7 +219,7 @@ contract Voter is IVoter {
     }
 
     function claimBribes(address[] memory _bribes, address[][] memory _tokens, uint _tokenId) external {
-        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId));
+        require(IVotingEscrow(_ve).isApprovedOrOwner(msg.sender, _tokenId),"!approvedOrOwner");
         for (uint i = 0; i < _bribes.length; i++) {
             IBribe(_bribes[i]).getRewardForOwner(_tokenId, _tokens[i]);
         }

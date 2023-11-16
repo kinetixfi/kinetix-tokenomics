@@ -23,8 +23,6 @@ interface IVotingEscrow {
 
     function voting(uint tokenId) external;
     function abstain(uint tokenId) external;
-    function attach(uint tokenId) external;
-    function detach(uint tokenId) external;
 
     function checkpoint() external;
     function deposit_for(uint tokenId, uint value) external;
