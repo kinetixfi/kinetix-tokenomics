@@ -16,3 +16,5 @@
      - Code refactored and simplified for just using external bribe 
   5. VotingEscrow
      - Maximum lock time decreased to 1 year
+## Version 2
+### Vester Contract added (for pKFI -> KFI conversion)
