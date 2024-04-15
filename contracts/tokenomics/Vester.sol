@@ -36,7 +36,8 @@ contract Vester is IVester, IERC20, ReentrancyGuard, Governable {
 
     event Claim(address indexed receiver, uint256 amount);
     event Deposit(address indexed account, uint256 depositAmount , uint256 directRefundAmount);
-    event Withdraw(address indexed account, uint256 claimedAmount, uint256 balance);
+    event WithdrawToken(address indexed account, address indexed token, uint256 withdrawAmount);
+    event UpdateVesting(address indexed account,uint256 lastVestingTime,uint256 burnAmount);
 
     /// @notice constructor
     /// @dev Initializes token addresses and vesting parameters
@@ -57,6 +58,7 @@ contract Vester is IVester, IERC20, ReentrancyGuard, Governable {
         require(_directRefundRate < 100, "invalid direct refund rate");
         require(_depositToken != address(0), "invalid deposit token");
         require(_claimableToken != address(0), "invalid claimable token");
+        require(_depositToken != _claimableToken, "invalid tokens");
         name = _name;
         symbol = _symbol;
         
@@ -72,13 +74,30 @@ contract Vester is IVester, IERC20, ReentrancyGuard, Governable {
         return _claim(msg.sender, msg.sender);
     }
 
+    /// @notice send claimable amount to _receiver
+    /// @param _receiver receiver address
+    function claimTo(address _receiver) external nonReentrant returns (uint256) {
+        require(_receiver != address(0), "zero address");
+        return _claim(msg.sender, _receiver);
+    }
+
     /// @dev to help users who accidentally send their tokens to this contract
     function withdrawToken(
         address _token,
         address _account,
         uint256 _amount
-    ) external onlyGov {
+    ) external onlyGov nonReentrant{
+        if (_token == depositToken) {
+            uint256 depositBalance = IERC20(depositToken).balanceOf(address(this));
+            require(totalSupply + _amount <= depositBalance , "Not allowed to withdraw users' funds");
+        }
+        if (_token == claimableToken) {
+            uint256 claimBalance = IERC20(claimableToken).balanceOf(address(this));
+            require(totalSupply + _amount <= claimBalance , "Not allowed to withdraw users' funds");
+        }
+
         IERC20(_token).safeTransfer(_account, _amount);
+        emit WithdrawToken(_account, _token ,_amount);
     }
 
     /// @notice calculate claimable amount for `_account`
@@ -155,6 +174,8 @@ contract Vester is IVester, IERC20, ReentrancyGuard, Governable {
     /// @param _amount amount of deposit token
     function deposit(uint256 _amount) external nonReentrant{         
         require(_amount > 0, "invalid _amount");
+        uint256 claimBalance = IERC20(claimableToken).balanceOf(address(this));
+        require(claimBalance >= totalSupply + _amount, "Not enough claimable token");
         address account = msg.sender;
 
         _updateVesting(account);
@@ -187,15 +208,15 @@ contract Vester is IVester, IERC20, ReentrancyGuard, Governable {
         uint256 amount = _getNextClaimableAmount(_account);
         lastVestingTimes[_account] = block.timestamp;
 
-        if (amount == 0) {
-            return;
+        if (amount > 0) {
+            // transfer claimableAmount from balances to cumulativeClaimAmounts
+            _burn(_account, amount);
+            cumulativeClaimAmounts[_account] = cumulativeClaimAmounts[_account] + amount;
+
+            IBurnable(depositToken).burn(amount);
         }
 
-        // transfer claimableAmount from balances to cumulativeClaimAmounts
-        _burn(_account, amount);
-        cumulativeClaimAmounts[_account] = cumulativeClaimAmounts[_account] + amount;
-
-        IBurnable(depositToken).burn(amount);
+        emit UpdateVesting(_account, block.timestamp, amount);
     }
 
     /// @dev calculate next claimable amounts  for `_account` 
