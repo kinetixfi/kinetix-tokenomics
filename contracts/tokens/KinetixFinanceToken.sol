@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity 0.8.20;
+pragma solidity 0.8.22;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
@@ -15,7 +15,7 @@ contract KinetixFinanceToken is ERC20, AccessControl, ERC20Permit {
     uint256 public constant minimumTimeBetweenMints = 1 days * 365;
 
     /// @notice Cap on the percentage of totalSupply that can be minted at each mint
-    uint8 public constant mintCap = 2;
+    uint256 public constant mintCap = 2;
 
     constructor(address defaultAdmin, address minter, uint256 _mintingAllowedAfter)
         ERC20("Kinetix Finance", "KAI")
@@ -23,7 +23,7 @@ contract KinetixFinanceToken is ERC20, AccessControl, ERC20Permit {
     {
         require(defaultAdmin != address(0), "KAI::constructor:invalid defaultAdmin");
         require(minter != address(0), "KAI::constructor:invalid minter");
-        require(_mintingAllowedAfter >= block.timestamp, "KAI::constructor: minting can only begin after deployment");
+        require(_mintingAllowedAfter >= block.timestamp + 1 days * 365 * 5, "KAI::constructor: minting can only begin after 5 years");
         _mint(msg.sender, 1000000000 * 10 ** decimals());
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
         _grantRole(MINTER_ROLE, minter);
@@ -35,7 +35,7 @@ contract KinetixFinanceToken is ERC20, AccessControl, ERC20Permit {
      * @param to The address of the destination account
      * @param amount The number of tokens to be minted
      */
-    function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) {
+    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) {
         require(block.timestamp >= mintingAllowedAfter, "KAI::mint: minting not allowed yet");
         require(amount <= (totalSupply() * mintCap)/ 100, "KAI::mint: exceeded mint cap");
 
