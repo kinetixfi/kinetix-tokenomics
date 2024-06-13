@@ -87,7 +87,7 @@ contract VotingEscrow is IERC721, IERC721Metadata, IVotes {
     uint internal tokenId;
 
     /// @notice Contract constructor
-    /// @param token_addr `KFI` token address
+    /// @param token_addr `KAI` token address
     constructor(address token_addr, address art_proxy) {
         token = token_addr;
         voter = msg.sender;
